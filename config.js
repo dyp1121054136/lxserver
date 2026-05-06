@@ -35,7 +35,7 @@ module.exports = {
 
   // 是否启用公开用户权限限制 (开启后将限制公开用户的某些敏感操作，如上传、删除自定义源)
   // 环境变量: ENABLE_PUBLIC_USER_RESTRICTION (true/false)
-  "user.enablePublicRestriction": true,
+  "user.enablePublicRestriction": false,
 
   // 是否启用登录用户缓存限制 (开启后将限制非管理员登录用户的核心缓存设置)
   // 环境变量: ENABLE_LOGIN_USER_CACHE_RESTRICTION (true/false)
