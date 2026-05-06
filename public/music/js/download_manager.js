@@ -295,14 +295,17 @@ class DownloadManager {
 
         let skipCount = 0;
         for (const { song, quality, cacheResult } of results) {
+            const isServerTask = song.isServer || false;
             if (cacheResult.exists && !cacheResult.isCollision) {
-                skipCount++;
-                continue; // Skip exact matches
+                if (isServerTask) { // [Fix] 只有明确是“云端缓存”的任务才跳过已存在的
+                    skipCount++;
+                    continue;
+                }
+                // 浏览器下载任务：即使已存在缓存也要添加任务，以便用户下载到本地，但后面会优先用缓存地址
             }
 
             // Check if already in queue (with same quality)
             const existing = this.tasks.find(t => t.song.id === song.id && t.quality === quality && (t.status === 'waiting' || t.status === 'downloading'));
-            const isServerTask = song.isServer || false;
             if (!existing) {
                 // For server tasks, FORCE a deterministic ID that matches backend track key normalization: {source}_{id}_{quality}
                 let rawId = song.songmid || song.id;
@@ -325,7 +328,8 @@ class DownloadManager {
                     retryCount: 0,
                     maxRetries: 2,
                     controller: null,
-                    collisionInfo: cacheResult.isCollision ? cacheResult : null
+                    collisionInfo: cacheResult.isCollision ? cacheResult : null,
+                    cacheUrl: cacheResult.exists ? cacheResult.url : null // [新增] 保存缓存地址
                 });
             }
         }
@@ -402,7 +406,13 @@ class DownloadManager {
             const res = await fetch('/api/music/cache/download', {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ songInfo: task.song, url: rawUrl, quality, enableOnlyDownloadMode: window.settings?.enableOnlyDownloadMode || false })
+                body: JSON.stringify({ 
+                    songInfo: task.song, 
+                    url: rawUrl, 
+                    quality, 
+                    enableOnlyDownloadMode: window.settings?.enableOnlyDownloadMode || false,
+                    embedLyric: !!(window.settings?.embedLyricToFile ?? true)
+                })
             });
 
             if (!res.ok) throw new Error('服务器拒绝缓存');
@@ -433,25 +443,47 @@ class DownloadManager {
             task.quality = quality;
             this.renderTask(task);
 
-            const headers = { 'Content-Type': 'application/json', ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {}) };
+            let finalUrl = '';
+            let ext = 'mp3';
 
-            // Fetch the resolving URL
-            const resolveRes = await fetch('/api/music/url', {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ songInfo: task.song, quality }),
-                signal: task.controller.signal
-            });
+            if (task.cacheUrl) {
+                // 1. 如果有缓存地址，直接使用缓存下载
+                console.log('[DownloadManager] Using server cache for download:', task.song.name);
+                finalUrl = task.cacheUrl;
 
-            if (!resolveRes.ok) throw new Error('Failed to resolve URL');
-            const resolveData = await resolveRes.json();
+                // 补全 Token
+                const authToken = (window.getUserAuthHeaders ? window.getUserAuthHeaders()['x-user-token'] : null) || localStorage.getItem('lx_user_token') || '';
+                if (authToken && !finalUrl.includes('token=')) {
+                    finalUrl += (finalUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(authToken)}`;
+                }
 
-            if (!resolveData.url) throw new Error('No download URL found');
+                // 推断后缀
+                try {
+                    const urlObj = new URL(finalUrl, window.location.origin);
+                    const path = urlObj.pathname;
+                    if (path.includes('.')) ext = path.split('.').pop();
+                } catch (e) { }
+            } else {
+                // 2. 无缓存，向原站解析 URL
+                const headers = { 'Content-Type': 'application/json', ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {}) };
 
-            let finalUrl = resolveData.url;
-            let ext = resolveData.type || 'mp3';
-            if (ext.startsWith('flac')) ext = 'flac'; // Handle flac24bit -> flac
-            if (ext === '128k' || ext === '320k') ext = 'mp3';
+                const resolveRes = await fetch('/api/music/url', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ songInfo: task.song, quality }),
+                    signal: task.controller.signal
+                });
+
+                if (!resolveRes.ok) throw new Error('Failed to resolve URL');
+                const resolveData = await resolveRes.json();
+
+                if (!resolveData.url) throw new Error('No download URL found');
+
+                finalUrl = resolveData.url;
+                ext = resolveData.type || 'mp3';
+                if (ext.startsWith('flac')) ext = 'flac'; // Handle flac24bit -> flac
+                if (ext === '128k' || ext === '320k') ext = 'mp3';
+            }
 
             // Determine filename with collision handling
             let filename = `${task.song.singer} - ${task.song.name}`;
@@ -474,7 +506,10 @@ class DownloadManager {
                 }
             }
 
-            if (shouldProxyDownload && !finalUrl.startsWith('/api/music/download')) {
+            // [优化] 如果是本地缓存文件，不需要经过下载代理（已经有标签了）
+            const isLocalCache = finalUrl.startsWith('/api/music/cache/file');
+
+            if (shouldProxyDownload && !finalUrl.startsWith('/api/music/download') && !isLocalCache) {
                 // Add metadata for tagging — 用 albumName 优先（playlist 字段），album 为兼容备选
                 const albumName = task.song.albumName || (task.song.album && typeof task.song.album === 'string' ? task.song.album : (task.song.album?.name || ''));
                 let coverUrl = this.getSongCover(task.song);
@@ -489,7 +524,13 @@ class DownloadManager {
                     `name=${encodeURIComponent(task.song.name)}`,
                     `singer=${encodeURIComponent(task.song.singer)}`,
                     `album=${encodeURIComponent(albumName)}`,
-                    coverUrl ? `pic=${encodeURIComponent(coverUrl)}` : ''
+                    coverUrl ? `pic=${encodeURIComponent(coverUrl)}` : '',
+                    // [新增] 传 source/songmid 供服务端调歌词接口，并标记需要嵌入歌词
+                    task.song.source ? `source=${encodeURIComponent(task.song.source)}` : '',
+                    (task.song.songmid || task.song.id) ? `songmid=${encodeURIComponent(task.song.songmid || task.song.id)}` : '',
+                    task.song.hash ? `hash=${encodeURIComponent(task.song.hash)}` : '',
+                    task.song.interval ? `interval=${encodeURIComponent(task.song.interval)}` : '',
+                    (window.settings?.embedLyricToFile !== false) ? 'lyric=1' : ''
                 ].filter(Boolean).join('&');
 
                 finalUrl = `/api/music/download?url=${encodeURIComponent(finalUrl)}&filename=${encodeURIComponent(filename)}&taskId=${task.id}&${metadataParams}`;

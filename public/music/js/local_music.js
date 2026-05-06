@@ -9,14 +9,13 @@ window.LocalMusicManager = {
     batchMode: false,
     selectedItems: new Set(),
     searchKeyword: '',
-    filterFolder: 'all', // all | cache | music
-    filterQuality: 'all',
-    filterStatus: 'all', // all | missing_id3 | missing_cover | missing_lyric | unindexed
-    filterSource: 'all',
+    filterFolder: 'all',  // 单选，'all' | 'cache' | 'music'
+    filterQuality: new Set(), // 多选 Set，空集合 = 不限制
+    filterStatus: new Set(),  // 多选 Set，空集合 = 不限制
+    filterSource: new Set(),  // 多选 Set，空集合 = 不限制
     sortBy: 'mtime',
     sortOrder: 'desc',
     quickSearchKeyword: '',
-    searchKeyword: '',
     searchTimer: null,
     isFilterPanelOpen: false,
     manualIndexTargetItem: null, // 当前正在手动关联的本地项
@@ -31,9 +30,9 @@ window.LocalMusicManager = {
         const filters = {
             searchKeyword: this.searchKeyword,
             filterFolder: this.filterFolder,
-            filterQuality: this.filterQuality,
-            filterStatus: this.filterStatus,
-            filterSource: this.filterSource,
+            filterQuality: Array.from(this.filterQuality),
+            filterStatus: Array.from(this.filterStatus),
+            filterSource: Array.from(this.filterSource),
             sortBy: this.sortBy,
             sortOrder: this.sortOrder,
             selectedSubPath: this.selectedSubPath
@@ -48,21 +47,30 @@ window.LocalMusicManager = {
                 const filters = JSON.parse(cached);
                 this.searchKeyword = filters.searchKeyword || '';
                 this.filterFolder = filters.filterFolder || 'all';
-                this.filterQuality = filters.filterQuality || 'all';
-                this.filterStatus = filters.filterStatus || 'all';
-                this.filterSource = filters.filterSource || 'all';
+                const toSet = (v) => {
+                    if (!v || v === 'all') return new Set();
+                    if (Array.isArray(v)) return new Set(v);
+                    return new Set([v]);
+                };
+                this.filterQuality = toSet(filters.filterQuality);
+                this.filterStatus = toSet(filters.filterStatus);
+                this.filterSource = toSet(filters.filterSource);
                 this.sortBy = filters.sortBy || 'mtime';
                 this.sortOrder = filters.sortOrder || 'desc';
                 this.selectedSubPath = filters.selectedSubPath || '';
 
                 // Update UI elements
                 if (document.getElementById('lm-search-input')) document.getElementById('lm-search-input').value = this.searchKeyword;
-                if (document.getElementById('lm-folder-select')) document.getElementById('lm-folder-select').value = this.filterFolder;
-                if (document.getElementById('lm-quality-select')) document.getElementById('lm-quality-select').value = this.filterQuality;
-                if (document.getElementById('lm-status-select')) document.getElementById('lm-status-select').value = this.filterStatus;
-                if (document.getElementById('lm-source-select')) document.getElementById('lm-source-select').value = this.filterSource;
                 if (document.getElementById('lm-sort-by')) document.getElementById('lm-sort-by').value = this.sortBy;
                 if (document.getElementById('lm-sort-order')) document.getElementById('lm-sort-order').value = this.sortOrder;
+                if (document.getElementById('lm-folder-select')) {
+                    document.getElementById('lm-folder-select').value = this.filterFolder;
+                    this._syncSelectActive('lm-folder-select');
+                }
+                // 标签按钮 UI 更新
+                this._syncTagUI('lm-quality-tags', this.filterQuality);
+                this._syncTagUI('lm-source-tags', this.filterSource);
+                this._syncTagUI('lm-status-tags', this.filterStatus);
 
                 const subPathText = document.getElementById('lm-subpath-text');
                 if (subPathText) {
@@ -74,6 +82,57 @@ window.LocalMusicManager = {
             }
         } catch (e) {
             console.error('Failed to load cached filters:', e);
+        }
+    },
+
+    // 同步标签按钮的激活状态
+    _syncTagUI(containerId, filterSet) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.querySelectorAll('[data-filter-value]').forEach(btn => {
+            const val = btn.dataset.filterValue;
+            if (filterSet.has(val)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    },
+
+    // 切换某个筛选标签的选中状态
+    toggleFilterTag(filterKey, value) {
+        const setMap = {
+            quality: 'filterQuality',
+            source: 'filterSource',
+            folder: 'filterFolder',
+            status: 'filterStatus'
+        };
+        const tagContainerMap = {
+            quality: 'lm-quality-tags',
+            source: 'lm-source-tags',
+            folder: 'lm-folder-tags',
+            status: 'lm-status-tags'
+        };
+        const prop = setMap[filterKey];
+        if (!prop) return;
+        const set = this[prop];
+        if (set.has(value)) {
+            set.delete(value);
+        } else {
+            set.add(value);
+        }
+        this._syncTagUI(tagContainerMap[filterKey], set);
+        this.applyFilters();
+    },
+
+    // 同步 select 下拉框的激活状态样式
+    _syncSelectActive(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.value !== 'all' && el.value !== 'mtime' && el.value !== 'desc') {
+            el.classList.add('active');
+        } else {
+            el.classList.remove('active');
         }
     },
 
@@ -194,21 +253,28 @@ window.LocalMusicManager = {
         this.searchKeyword = '';
         this.quickSearchKeyword = '';
         this.filterFolder = 'all';
-        this.filterQuality = 'all';
-        this.filterStatus = 'all';
-        this.filterSource = 'all';
+        this.filterQuality = new Set();
+        this.filterStatus = new Set();
+        this.filterSource = new Set();
         this.sortBy = 'mtime';
         this.sortOrder = 'desc';
 
-        document.getElementById('lm-search-input').value = '';
-        document.getElementById('lm-quick-search').value = '';
-        document.getElementById('lm-quality-select').value = 'all';
-        document.getElementById('lm-folder-select').value = 'all';
-        document.getElementById('lm-status-select').value = 'all';
-        const sourceSelect = document.getElementById('lm-source-select');
-        if (sourceSelect) sourceSelect.value = 'all';
+        const si = document.getElementById('lm-search-input');
+        if (si) si.value = '';
+        const qs = document.getElementById('lm-quick-search');
+        if (qs) qs.value = '';
         document.getElementById('lm-sort-by').value = 'mtime';
         document.getElementById('lm-sort-order').value = 'desc';
+
+        if (document.getElementById('lm-folder-select')) {
+            document.getElementById('lm-folder-select').value = 'all';
+            this._syncSelectActive('lm-folder-select');
+        }
+
+        // 清空所有标签按钮激活状态
+        this._syncTagUI('lm-quality-tags', this.filterQuality);
+        this._syncTagUI('lm-source-tags', this.filterSource);
+        this._syncTagUI('lm-status-tags', this.filterStatus);
 
         this.selectedSubPath = '';
         const subPathText = document.getElementById('lm-subpath-text');
@@ -253,20 +319,9 @@ window.LocalMusicManager = {
     applyFilters() {
         let current = this.originalData;
 
-        // 2. Read current filter values
+        // 2. Read current filter values from input
         const searchInput = document.getElementById('lm-search-input');
         if (searchInput) this.searchKeyword = searchInput.value.trim().toLowerCase();
-
-        const qualitySelect = document.getElementById('lm-quality-select');
-        if (qualitySelect) this.filterQuality = qualitySelect.value;
-
-        const folderSelect = document.getElementById('lm-folder-select');
-        if (folderSelect) this.filterFolder = folderSelect.value;
-
-        const statusSelect = document.getElementById('lm-status-select');
-        if (statusSelect) this.filterStatus = statusSelect.value;
-        const sourceSelect = document.getElementById('lm-source-select');
-        if (sourceSelect) this.filterSource = sourceSelect.value;
 
         const sortBySelect = document.getElementById('lm-sort-by');
         if (sortBySelect) this.sortBy = sortBySelect.value;
@@ -276,29 +331,37 @@ window.LocalMusicManager = {
         // [New] Save to localStorage
         this.saveFilters();
 
-        // 3. Apply Filters
+        // 3. Apply Filters（多选 Set，空集合表示不限制；Folder 为单选）
         current = current.filter(item => {
-            // Folder check
+            // Folder check（单选）
             if (this.filterFolder !== 'all' && item.folder !== this.filterFolder) return false;
 
-            // Quality check
-            if (this.filterQuality !== 'all' && item.quality !== this.filterQuality) return false;
+            // Quality check（多选）
+            if (this.filterQuality.size > 0 && !this.filterQuality.has(item.quality)) return false;
 
-            // Source check
-            if (this.filterSource && this.filterSource !== 'all' && item.source !== this.filterSource) return false;
+            // Source check（多选）
+            if (this.filterSource.size > 0 && !this.filterSource.has(item.source)) return false;
 
-            // Metadata Status check
-            if (this.filterStatus !== 'all') {
+            // Metadata Status check（多选：任意一个条件命中即显示）
+            if (this.filterStatus.size > 0) {
                 const isUnindexed = item.source === 'unknown' || (item.songmid && item.songmid.includes(' - '));
                 const isNoTag = (n) => !n || n === '未知歌曲' || n === '未知歌手' || n.toLowerCase() === 'unknown';
                 const missingID3 = isNoTag(item.name) || isNoTag(item.singer) || isUnindexed;
                 const missingCover = !item.hasCover;
                 const missingLyric = !item.hasLyric && !item.lyricFilename;
+                const missingEmbedLyric = !item.hasEmbedLyric;
 
-                if (this.filterStatus === 'unindexed' && !isUnindexed) return false;
-                if (this.filterStatus === 'missing_id3' && !missingID3) return false;
-                if (this.filterStatus === 'missing_cover' && !missingCover) return false;
-                if (this.filterStatus === 'missing_lyric' && !missingLyric) return false;
+                const statusMap = {
+                    'unindexed': isUnindexed,
+                    'missing_id3': missingID3,
+                    'missing_cover': missingCover,
+                    'missing_lyric': missingLyric,
+                    'missing_lyric_file': missingLyric,
+                    'missing_embed_lyric': missingEmbedLyric,
+                };
+                // 只要勾选的状态中任一命中即保留（OR 逻辑）
+                const matched = Array.from(this.filterStatus).some(s => statusMap[s]);
+                if (!matched) return false;
             }
 
             // Keyword search (Complex)
@@ -326,7 +389,6 @@ window.LocalMusicManager = {
         // 3.0.1 Update SubPath Button State
         const subPathBtn = document.getElementById('lm-subpath-btn');
         if (subPathBtn) {
-            // We NO LONGER disable the button so it can trigger showInfo toast in openSubPathModal
             if (this.filterFolder !== 'music') {
                 if (this.selectedSubPath !== '') {
                     this.selectedSubPath = '';
@@ -380,11 +442,16 @@ window.LocalMusicManager = {
 
         // 4. Update UI Indicator
         const dot = document.getElementById('lm-filter-active-dot');
-        const hasActiveFilters = this.searchKeyword || this.filterQuality !== 'all' || this.filterFolder !== 'all' || this.filterStatus !== 'all' || this.filterSource !== 'all';
+        const hasActiveFilters = this.searchKeyword || this.filterQuality.size > 0 || this.filterFolder !== 'all' || this.filterStatus.size > 0 || this.filterSource.size > 0;
         if (dot) {
             if (hasActiveFilters) dot.classList.remove('hidden');
             else dot.classList.add('hidden');
         }
+        
+        // 同步所有 select 的 active 状态（非 all 时背景高亮）
+        this._syncSelectActive('lm-folder-select');
+        this._syncSelectActive('lm-sort-by');
+        this._syncSelectActive('lm-sort-order');
 
         const countEl = document.getElementById('lm-total-count');
         if (countEl) countEl.innerText = `共 ${current.length} 首`;
@@ -478,8 +545,8 @@ window.LocalMusicManager = {
                             ${item.bitrate ? `<span class="text-[10px] opacity-60 font-mono hidden sm:inline-block">${Math.round(item.bitrate)}kbps</span>` : ''}
                             ${item.sampleRate ? `<span class="text-[10px] opacity-60 font-mono hidden sm:inline-block">${(item.sampleRate / 1000).toFixed(1)}kHz</span>` : ''}
                             ${item.bitDepth && item.bitDepth > 16 ? `<span class="text-[10px] opacity-60 font-mono hidden sm:inline-block">${item.bitDepth}bit</span>` : ''}
-                            ${item.hasLyric || item.lyricFilename ? '<span class="text-[10px] text-emerald-500 border border-emerald-500/30 rounded px-1 scale-90 hidden sm:inline-block">词</span>' : ''}
-                            ${item.hasCover ? '<span class="text-[10px] text-emerald-500 border border-emerald-500/30 rounded px-1 scale-90 hidden sm:inline-block">封</span>' : ''}
+                            ${item.hasEmbedLyric ? '<span class="text-[10px] text-emerald-500 border border-gray-400/40 dark:border-gray-600/50 rounded px-1 scale-90 hidden sm:inline-block" title="已嵌入歌词标签">词</span>' : ''}
+                            ${item.hasCover ? '<span class="text-[10px] text-emerald-500 border border-gray-400/40 dark:border-gray-600/50 rounded px-1 scale-90 hidden sm:inline-block" title="已嵌入封面">封</span>' : ''}
                         </div>
                         <!-- Mobile extra info (second row) -->
                         <div class="sm:hidden text-[9px] t-text-muted mt-1 flex items-center gap-2 flex-wrap opacity-80">
@@ -496,8 +563,8 @@ window.LocalMusicManager = {
                                 ${(!missingID3 && !missingCover && !missingLyric) ? '<span class="px-1 py-0 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 rounded-sm font-bold scale-90 origin-left">完整</span>' : ''}
                             </div>
                             <div class="ml-auto flex items-center gap-1 scale-90 origin-right">
-                                ${item.hasLyric || item.lyricFilename ? '<span class="text-emerald-500 border border-emerald-500/50 rounded px-1">词</span>' : ''}
-                                ${item.hasCover ? '<span class="text-emerald-500 border border-emerald-500/50 rounded px-1">封</span>' : ''}
+                                ${item.hasEmbedLyric ? '<span class="text-emerald-500 border border-gray-400/40 dark:border-gray-600/80 rounded px-1" title="已嵌入歌词标签">词</span>' : ''}
+                                ${item.hasCover ? '<span class="text-emerald-500 border border-gray-400/40 dark:border-gray-600/80 rounded px-1" title="已嵌入封面">封</span>' : ''}
                             </div>
                         </div>
                     </div>
@@ -753,6 +820,55 @@ window.LocalMusicManager = {
             showInfo(`补全操作完成。成功 ${success} 项，失败/不支持 ${fail} 项`);
         }
         this.refresh();
+    },
+
+    async batchEmbedLyric() {
+        const targetFilenames = Array.from(this.selectedItems);
+        if (targetFilenames.length === 0) {
+            if (typeof showError === 'function') showError('请先选择要嵌入歌词的文件');
+            return;
+        }
+
+        if (typeof showSelect === 'function') {
+            if (!(await showSelect('嵌入歌词到文件',
+                `将对选中的 ${targetFilenames.length} 首歌曲嵌入歌词到 USLT 标签。\n` +
+                `• 已有歌词标签的歌曲将跳过\n` +
+                `• 有 .lrc 文件的直接读取嵌入\n` +
+                `• 没有 .lrc 文件的将尝试从网络获取\n\n确定继续吗?`
+            ))) return;
+        }
+
+        try {
+            if (typeof showInfo === 'function') showInfo('正在嵌入歌词，请稍候...');
+            const res = await fetch('/api/music/cache/embedLyric', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {})
+                },
+                body: JSON.stringify({ filenames: targetFilenames })
+            });
+
+            const result = await res.json();
+            if (result.success) {
+                const { successCount = 0, skippedCount = 0, failCount = 0 } = result;
+                if (typeof showInfo === 'function') {
+                    showInfo(`嵌入完成：成功 ${successCount} 首，跳过（已有） ${skippedCount} 首，失败 ${failCount} 首`);
+                }
+                // 打印详情供排查
+                if (result.details && result.details.length > 0) {
+                    const failed = result.details.filter(d => d.status === 'fail');
+                    if (failed.length > 0) {
+                        console.warn('[EmbedLyric] 失败详情:', failed);
+                    }
+                }
+            } else {
+                throw new Error(result.message || '服务器返回错误');
+            }
+        } catch (e) {
+            if (typeof showError === 'function') showError('嵌入歌词失败: ' + e.message);
+            console.error('[EmbedLyric] Error:', e);
+        }
     },
 
     async batchUpdateMetadata() {

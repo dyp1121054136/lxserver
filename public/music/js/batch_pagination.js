@@ -200,7 +200,7 @@ async function batchDeleteFromList() {
             const oldUsername = currentListData ? currentListData.username : null;
             currentListData = data;
             if (oldUsername) currentListData.username = oldUsername; // Preserve username
-            localStorage.setItem('lx_list_data', JSON.stringify(data));
+            await window.ListStore.set(data).catch(e => console.error('[IDBStore] 保存失败:', e));
             renderMyLists(data);
 
             // Refresh current view
@@ -226,7 +226,7 @@ async function batchDeleteFromList() {
             setListById(activeListId, remainingItems);
 
             // Save to cache
-            localStorage.setItem('lx_list_data', JSON.stringify(currentListData));
+            await window.ListStore.set(currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
             console.log('[Batch] WS模式:已修改缓存,下次连接时将同步');
 
             // If currently connected, push the change immediately

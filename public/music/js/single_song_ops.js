@@ -43,7 +43,7 @@ async function deleteSingleSong(songId) {
             const oldUsername = currentListData ? currentListData.username : null;
             currentListData = data;
             if (oldUsername) currentListData.username = oldUsername; // Preserve username
-            localStorage.setItem('lx_list_data', JSON.stringify(data));
+            await window.ListStore.set(data).catch(e => console.error('[IDBStore] 保存失败:', e));
             renderMyLists(data);
 
             // Refresh current view
@@ -68,7 +68,7 @@ async function deleteSingleSong(songId) {
             setListById(activeListId, remainingItems);
 
             // Save to cache
-            localStorage.setItem('lx_list_data', JSON.stringify(currentListData));
+            await window.ListStore.set(currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
             console.log('[Single] WS模式:已修改缓存,下次连接时将同步');
 
             // If currently connected, push the change immediately
@@ -165,7 +165,12 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
 
     let selected = skipPromptTarget;
     if (!selected) {
-        const options = ['浏览器下载', '缓存到服务器'];
+        // [优化] 检测是否已缓存
+        const prefQuality = window.settings?.preferredQuality || '320k';
+        const checkResult = await window.checkServerCache?.(song, prefQuality);
+        const cacheSuffix = (checkResult?.exists && !checkResult?.isCollision) ? ' (已缓存)' : '';
+
+        const options = ['浏览器下载', `缓存到服务器${cacheSuffix}`];
         const modeText = window.settings?.['enableOnlyDownloadMode'] ? '仅下载模式' : '缓存模式';
         selected = await showOptions('下载与缓存', `[${modeText}] 选择对 [${song.name}] 的操作：`, options);
     }

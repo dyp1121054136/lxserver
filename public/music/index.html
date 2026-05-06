@@ -24,8 +24,8 @@
             posthog.init('phc_vvaqX7sm3RqmiqRbMCjETTc67XKjgqeMgmYHvsZr30f', { api_host: 'https://us.i.posthog.com' })
         }
     </script>
-    <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="/music/assets/logo.svg" type="image/svg+xml">
+    <link rel="manifest" href="/music/manifest.json">
     <link rel="stylesheet" href="css/theme_variables.css">
     <script src="assets/tailwindcss.js"></script>
     <script src="js/tailwind_setup.js"></script>
@@ -800,6 +800,181 @@
                 padding-bottom: 0.5rem !important;
             }
         }
+
+        /* ── 通用控件基础样式 (Filter Tag, Select, Custom Trigger) ── */
+        .lm-filter-tag, .lm-select, .cs-trigger {
+            font-size: 11px;
+            font-weight: 600;
+            border: 1.5px solid var(--border-main);
+            background-color: var(--bg-panel);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .lm-filter-tag:hover, .lm-select:hover, .cs-trigger:hover {
+            border-color: var(--c-400);
+            color: var(--c-500);
+        }
+
+        .lm-filter-tag.active, .lm-select.active, .cs-wrapper.highlight .cs-trigger {
+            background-color: var(--c-500);
+            border-color: var(--c-500);
+            color: #fff;
+        }
+
+        .lm-select:focus, .cs-wrapper.active .cs-trigger {
+            border-color: var(--c-500);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-500) 20%, transparent);
+            color: var(--text-main);
+        }
+
+        /* ── 多选筛选标签组特有样式 ── */
+        .lm-filter-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-height: 30px;
+            align-items: center;
+        }
+
+        .lm-filter-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+            line-height: 1.6;
+        }
+
+        .lm-filter-tag:hover {
+            background-color: color-mix(in srgb, var(--c-500) 8%, var(--bg-panel));
+        }
+
+        .lm-filter-tag.active {
+            box-shadow: 0 1px 4px color-mix(in srgb, var(--c-500) 40%, transparent);
+        }
+
+        .lm-filter-tag.active:hover {
+            background-color: var(--c-600);
+            border-color: var(--c-600);
+        }
+
+        /* ── 统一风格的单选 select 特有样式 ── */
+        .lm-select {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 100%;
+            padding: 3px 24px 3px 8px;
+            border-radius: 6px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 7px center;
+            outline: none;
+            line-height: 1.6;
+            min-height: 26px;
+        }
+
+        .lm-select.active {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffffff'/%3E%3C/svg%3E");
+        }
+
+        /* ── 自定义下拉组件基础样式 ── */
+        .cs-wrapper {
+            display: inline-block;
+            vertical-align: middle;
+            user-select: none;
+            cursor: pointer;
+        }
+        /* 继承布局 */
+        .cs-wrapper.flex-1 { flex: 1; }
+        .cs-wrapper.flex-none { flex: none; }
+        .cs-wrapper.shrink-0 { flex-shrink: 0; }
+
+        .cs-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 4px 10px;
+            border-radius: 10px;
+            min-height: 28px;
+            box-sizing: border-box;
+        }
+
+        .cs-trigger-icon {
+            font-size: 8px;
+            transition: transform 0.2s ease;
+            margin-left: 8px;
+        }
+        .cs-wrapper.active .cs-trigger-icon { transform: rotate(180deg); }
+        .cs-wrapper.highlight .cs-trigger-icon { color: #fff; }
+
+        /* Portal 模式下的下拉框 */
+        .cs-dropdown {
+            position: absolute;
+            z-index: 9999; /* 必须足够高以穿透所有容器 */
+            background: var(--bg-panel);
+            border: 1.5px solid var(--border-main);
+            border-radius: 12px;
+            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.2), 0 10px 15px -10px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+            overflow: hidden;
+            max-height: 280px;
+            overflow-y: auto;
+            min-width: 120px;
+        }
+        .cs-dropdown.visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+        /* 向上弹出的动画调整 */
+        .cs-dropdown.open-up {
+            transform: translateY(-10px) scale(0.95);
+        }
+        .cs-dropdown.open-up.visible {
+            transform: translateY(0) scale(1);
+        }
+
+        .cs-options { padding: 5px; list-style: none; margin: 0; }
+        .cs-option {
+            padding: 8px 12px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 8px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .cs-option:hover {
+            background: color-mix(in srgb, var(--c-500) 10%, var(--bg-panel));
+            color: var(--c-600);
+            padding-left: 14px;
+        }
+        .cs-option.selected {
+            background: var(--c-500);
+            color: #fff !important;
+            font-weight: 700;
+        }
+        .cs-option i { font-size: 9px; opacity: 0; }
+        .cs-option.selected i { opacity: 1; }
+
+        /* 暗色模式微调 */
+        .dark .cs-dropdown {
+            background: rgba(31, 41, 55, 0.9);
+            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.4);
+        }
+
+
     </style>
 </head>
 
@@ -930,43 +1105,75 @@
         <main class="flex-1 flex flex-col t-bg-main relative overflow-hidden">
 
             <!-- Header / Search Bar Helper (Top strip) -->
-            <header class="h-16 t-bg-panel glass shadow-sm flex items-center justify-between px-4 md:px-6 z-10">
-                <div class="flex items-center gap-3">
-                    <button onclick="toggleSidebar()" class="md:hidden t-text-muted p-2 hover:t-bg-track rounded-lg">
+            <header class="h-16 t-bg-panel glass shadow-sm flex items-center justify-between px-3 md:px-6 z-10">
+                <div class="flex items-center gap-1.5 md:gap-3 min-w-0">
+                    <button onclick="toggleSidebar()"
+                        class="md:hidden t-text-muted p-2 hover:t-bg-track rounded-lg shrink-0">
                         <i class="fas fa-bars text-xl"></i>
                     </button>
-                    <div class="active-tab-title text-lg font-bold t-text-main truncate" id="page-title">搜索音乐</div>
+                    <!-- Page Title: Hide on mobile to save space -->
+                    <div class="active-tab-title text-base md:text-lg font-bold t-text-main truncate hidden sm:block"
+                        id="page-title">搜索音乐</div>
                     <!-- Sleep Timer Trigger -->
                     <div id="sleep-timer-trigger"
-                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:t-bg-track cursor-pointer transition-all border border-transparent hover:t-border-main group ml-1"
+                        class="flex items-center gap-1 px-2 md:px-3 py-1.5 rounded-full hover:t-bg-track cursor-pointer transition-all border border-transparent hover:t-border-main group shrink-0"
                         onclick="openSleepTimerModal()" title="睡眠定时">
-                        <i class="far fa-clock t-text-muted group-hover:text-emerald-500 transition-colors"></i>
+                        <i class="far fa-clock t-text-muted group-hover:text-emerald-500 transition-colors text-sm"></i>
                         <span id="sleep-timer-countdown"
-                            class="text-xs font-mono font-bold text-emerald-600 hidden">00:00</span>
+                            class="text-[10px] md:text-xs font-mono font-bold text-emerald-600 hidden">00:00</span>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1.5 md:gap-4 shrink-0">
+                    <!-- User Info Area (Login/Username) -->
+                    <div id="header-user-info" class="flex items-center">
+                        <button id="header-login-btn"
+                            onclick="switchTab('settings'); setTimeout(() => { document.getElementById('btn-mode-local').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 100);"
+                            class="hidden items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-sm font-medium t-text-muted hover:t-bg-track hover:text-emerald-500 transition-all"
+                            title="去登录">
+                            <i class="fas fa-user-circle text-lg"></i>
+                            <span class="text-xs md:text-sm">登录</span>
+                        </button>
+                        <div id="header-user-display"
+                            class="hidden group relative items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg text-sm font-medium t-text-main t-bg-panel border t-border-main shadow-sm cursor-pointer overflow-hidden transition-all hover:border-red-400/50">
+                            <!-- User Status View -->
+                            <div
+                                class="flex items-center gap-1.5 md:gap-2 group-hover:opacity-0 group-hover:scale-95 transition-all duration-200">
+                                <i class="fas fa-user-check text-emerald-500 text-base md:text-sm shrink-0"></i>
+                                <span id="header-username"
+                                    class="truncate max-w-[45px] sm:max-w-[100px] inline-block">用户名</span>
+                            </div>
+                            <!-- Logout Button (Shows on Hover) -->
+                            <button onclick="handleHeaderLogout(event)"
+                                class="absolute inset-0 flex items-center justify-center bg-red-500 text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 font-bold text-xs">
+                                <i class="fas fa-sign-out-alt md:mr-1"></i> <span class="hidden md:inline">退出</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- PWA Install Button -->
                     <button id="pwa-install-btn"
-                        class="hidden items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                        class="hidden items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm shrink-0">
                         <i class="fas fa-download"></i>
-                        <span class="hidden sm:inline">安装应用</span>
+                        <span class="hidden md:inline">安装应用</span>
                     </button>
 
-                    <!-- Logout Button (only shown when auth is enabled) -->
+                    <!-- Legacy Logout Button (Hidden on all screens as we have the new one above, or keep hidden md:flex if user really wants both) -->
                     <button id="logout-btn" onclick="handleLogout()"
-                        class="hidden items-center gap-1.5 t-text-muted hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+                        class="hidden items-center gap-1.5 t-text-muted hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 shrink-0"
                         title="退出登录">
                         <i class="fas fa-sign-out-alt"></i>
                         <span class="hidden sm:inline text-xs font-medium">退出</span>
                     </button>
 
-                    <a href="https://github.com/XCQ0607/lxserver" target="_blank"
-                        class="t-text-muted hover:t-text-muted transition-colors" title="GitHub">
-                        <i class="fab fa-github text-xl"></i>
-                    </a>
-                    <div class="text-sm t-text-muted" id="app-version">v1.0.0 Web</div>
+                    <!-- Hide social/version info on mobile -->
+                    <div class="hidden lg:flex items-center gap-4">
+                        <a href="https://github.com/XCQ0607/lxserver" target="_blank"
+                            class="t-text-muted hover:t-text-muted transition-colors" title="GitHub">
+                            <i class="fab fa-github text-xl"></i>
+                        </a>
+                        <div class="text-sm t-text-muted" id="app-version">v1.0.0 Web</div>
+                    </div>
                 </div>
             </header>
 
@@ -1483,7 +1690,7 @@
 
                         <!-- 来源选择：手机端减小间距 -->
                         <select id="lb-source-select" onchange="changeLeaderboardSource()"
-                            class="px-2 py-1.5 md:px-3 text-xs md:text-sm font-medium border t-border-main t-bg-main rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 transition-all cursor-pointer">
+                            class="lm-select !w-auto min-w-[80px]">
                             <option value="wy">网易云</option>
                             <option value="tx">QQ</option>
                             <option value="kg">酷狗</option>
@@ -1719,7 +1926,7 @@
                                 <div
                                     class="flex items-center gap-1 bg-gray-100/50 dark:bg-gray-700/30 p-1 rounded-lg border t-border-main scale-90 origin-left">
                                     <select id="lm-location-select" onchange="window.LocalMusicManager.changeLocation()"
-                                        class="bg-transparent text-[10px] t-text-main outline-none cursor-pointer max-w-[70px]">
+                                        class="lm-select !w-24 !py-0.5 !text-[10px]">
                                         <option value="root">根目录</option>
                                         <option value="data">数据目录</option>
                                     </select>
@@ -1782,59 +1989,50 @@
                                     </div>
                                 </div>
 
-                                <!-- 音质筛选 -->
+                                <!-- 音质筛选（多选标签） -->
                                 <div class="col-span-1 space-y-1">
-                                    <label
-                                        class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">音频音质</label>
-                                    <select id="lm-quality-select" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
-                                        <option value="all">全部音质</option>
-                                        <option value="128k">128k</option>
-                                        <option value="320k">320k</option>
-                                        <option value="flac">FLAC</option>
-                                        <option value="flac24bit">Hi-Res</option>
-                                    </select>
+                                    <label class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">音频音质</label>
+                                    <div id="lm-quality-tags" class="lm-filter-tags">
+                                        <button class="lm-filter-tag" data-filter-value="128k" onclick="window.LocalMusicManager.toggleFilterTag('quality','128k')">128k</button>
+                                        <button class="lm-filter-tag" data-filter-value="320k" onclick="window.LocalMusicManager.toggleFilterTag('quality','320k')">320k</button>
+                                        <button class="lm-filter-tag" data-filter-value="flac" onclick="window.LocalMusicManager.toggleFilterTag('quality','flac')">FLAC</button>
+                                        <button class="lm-filter-tag" data-filter-value="flac24bit" onclick="window.LocalMusicManager.toggleFilterTag('quality','flac24bit')">Hi-Res</button>
+                                    </div>
                                 </div>
 
-                                <!-- 平台来源 -->
+                                <!-- 平台来源（多选标签） -->
                                 <div class="col-span-1 space-y-1">
-                                    <label
-                                        class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">平台来源</label>
-                                    <select id="lm-source-select" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
-                                        <option value="all">所有平台</option>
-                                        <option value="wy">网易云</option>
-                                        <option value="tx">腾讯</option>
-                                        <option value="kg">酷狗</option>
-                                        <option value="kw">酷我</option>
-                                        <option value="mg">咪咕</option>
-                                    </select>
+                                    <label class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">平台来源</label>
+                                    <div id="lm-source-tags" class="lm-filter-tags">
+                                        <button class="lm-filter-tag" data-filter-value="wy" onclick="window.LocalMusicManager.toggleFilterTag('source','wy')">网易云</button>
+                                        <button class="lm-filter-tag" data-filter-value="tx" onclick="window.LocalMusicManager.toggleFilterTag('source','tx')">腾讯</button>
+                                        <button class="lm-filter-tag" data-filter-value="kg" onclick="window.LocalMusicManager.toggleFilterTag('source','kg')">酷狗</button>
+                                        <button class="lm-filter-tag" data-filter-value="kw" onclick="window.LocalMusicManager.toggleFilterTag('source','kw')">酷我</button>
+                                        <button class="lm-filter-tag" data-filter-value="mg" onclick="window.LocalMusicManager.toggleFilterTag('source','mg')">咪咕</button>
+                                    </div>
                                 </div>
 
-                                <!-- 存储目录 -->
+                                <!-- 存储目录 (单选) -->
                                 <div class="col-span-1 space-y-1">
-                                    <label
-                                        class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">存储位置</label>
-                                    <select id="lm-folder-select" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
+                                    <label class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">存储位置</label>
+                                    <select id="lm-folder-select" onchange="window.LocalMusicManager.changeFolder()"
+                                        class="lm-select shadow-sm">
                                         <option value="all">所有目录</option>
                                         <option value="music">下载</option>
                                         <option value="cache">缓存</option>
                                     </select>
                                 </div>
 
-                                <!-- 数据状态 -->
-                                <div class="col-span-1 space-y-1">
-                                    <label
-                                        class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">数据状态</label>
-                                    <select id="lm-status-select" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
-                                        <option value="all">全部状态</option>
-                                        <option value="missing_id3">缺标签</option>
-                                        <option value="missing_cover">缺封面</option>
-                                        <option value="missing_lyric">缺歌词</option>
-                                        <option value="unindexed">未索引</option>
-                                    </select>
+                                <!-- 数据状态（多选标签） -->
+                                <div class="col-span-2 md:col-span-1 space-y-1">
+                                    <label class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">数据状态</label>
+                                    <div id="lm-status-tags" class="lm-filter-tags">
+                                        <button class="lm-filter-tag" data-filter-value="missing_id3" onclick="window.LocalMusicManager.toggleFilterTag('status','missing_id3')">缺标签</button>
+                                        <button class="lm-filter-tag" data-filter-value="missing_cover" onclick="window.LocalMusicManager.toggleFilterTag('status','missing_cover')">缺封面</button>
+                                        <button class="lm-filter-tag" data-filter-value="missing_lyric_file" onclick="window.LocalMusicManager.toggleFilterTag('status','missing_lyric_file')">缺歌词</button>
+                                        <button class="lm-filter-tag" data-filter-value="missing_embed_lyric" onclick="window.LocalMusicManager.toggleFilterTag('status','missing_embed_lyric')">缺嵌入</button>
+                                        <button class="lm-filter-tag" data-filter-value="unindexed" onclick="window.LocalMusicManager.toggleFilterTag('status','unindexed')">未索引</button>
+                                    </div>
                                 </div>
 
                                 <!-- 排序依据 -->
@@ -1842,7 +2040,7 @@
                                     <label
                                         class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">排序依据</label>
                                     <select id="lm-sort-by" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
+                                        class="lm-select shadow-sm">
                                         <option value="mtime">添加时间</option>
                                         <option value="name">歌曲名</option>
                                         <option value="singer">歌手</option>
@@ -1858,7 +2056,7 @@
                                     <label
                                         class="hidden md:block text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">顺序</label>
                                     <select id="lm-sort-order" onchange="window.LocalMusicManager.applyFilters()"
-                                        class="w-full bg-white/80 dark:bg-gray-900 border t-border-main rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500/30 outline-none t-text-main cursor-pointer shadow-sm">
+                                        class="lm-select shadow-sm">
                                         <option value="desc">降序</option>
                                         <option value="asc">升序</option>
                                     </select>
@@ -1901,6 +2099,11 @@
                                     <button onclick="window.LocalMusicManager.batchFetchLyrics()"
                                         class="text-[11px] md:text-xs px-2.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm transition-all font-medium whitespace-nowrap flex items-center gap-1.5">
                                         <i class="fas fa-closed-captioning"></i>补全歌词
+                                    </button>
+                                    <button onclick="window.LocalMusicManager.batchEmbedLyric()"
+                                        class="text-[11px] md:text-xs px-2.5 py-1.5 bg-violet-500 hover:bg-violet-600 text-white rounded-lg shadow-sm transition-all font-medium whitespace-nowrap flex items-center gap-1.5"
+                                        title="将歌词嵌入音频文件 USLT 标签（有 .lrc 文件直接使用，否则从网络获取）">
+                                        <i class="fas fa-file-audio"></i>嵌入歌词
                                     </button>
                                     <button id="lm-batch-categorize-btn"
                                         onclick="window.LocalMusicManager.openCategorizeModal()"
@@ -2065,7 +2268,7 @@
                                     </span>
                                 </h3>
                                 <select id="quality-select" onchange="changeQualityPreference(this.value)"
-                                    class="w-full p-3 border t-border-main rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                    class="lm-select !py-2 !text-sm">
                                     <option value="128k">标准 128K (流畅)</option>
                                     <option value="320k" selected>高品质 320K (推荐)</option>
                                     <option value="flac">无损 FLAC</option>
@@ -2082,7 +2285,7 @@
                                     </span>
                                 </h3>
                                 <select onchange="changeItemsPerPage(this.value)" id="items-per-page-select"
-                                    class="w-full p-2 border t-border-main rounded-lg text-sm">
+                                    class="lm-select !py-2 !text-sm">
                                     <option value="10">10 首/页</option>
                                     <option value="20" selected>20 首/页 (默认)</option>
                                     <option value="50">50 首/页</option>
@@ -2203,7 +2406,7 @@
                                             </div>
                                         </div>
                                         <select id="setting-download-concurrency"
-                                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-1 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-emerald-500 dark:focus:border-emerald-500 outline-none">
+                                            class="lm-select !w-20 !py-1">
                                             <option value="1">1</option>
                                             <option value="2">2</option>
                                             <option value="3">3</option>
@@ -2456,6 +2659,28 @@
                                         </label>
                                     </div>
 
+                                    <!-- Embed Lyric to File Setting -->
+                                    <div class="flex items-center justify-between pb-3 border-b t-border-main">
+                                        <div>
+                                            <div class="text-sm font-bold t-text-main flex items-center">
+                                                下载时嵌入歌词 (Embed Lyric to File)
+                                                <span class="setting-tooltip-trigger ml-1">
+                                                    <i class="fas fa-question-circle"></i>
+                                                    <span
+                                                        class="setting-tooltip-content">开启后，下载或缓存歌曲时将自动获取歌词并写入音频文件标签（USLT），同时保存 .lrc 文件。支持浏览器下载与服务器缓存两种模式。</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" id="setting-embed-lyric-to-file"
+                                                class="sr-only peer"
+                                                onchange="updateSetting('embedLyricToFile', this.checked)">
+                                            <div
+                                                class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 transition-all">
+                                            </div>
+                                        </label>
+                                    </div>
+
                                     <!-- Prefer Cached Playback Settings -->
                                     <div class="flex items-center justify-between pb-3 border-b t-border-main">
                                         <div>
@@ -2515,7 +2740,7 @@
                                         </div>
                                         <select id="setting-server-cache-location"
                                             onchange="updateSetting('serverCacheLocation', this.value); updateServerCacheConfig(this.value)"
-                                            class="w-full t-bg-main border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5">
+                                            class="lm-select !w-full !py-2.5">
                                             <option value="data">DATA_PATH (WebDAV同步)</option>
                                             <option value="root">运行目录 (仅本地)</option>
                                         </select>
@@ -2532,7 +2757,7 @@
                                         </div>
                                         <select id="setting-server-cache-naming"
                                             onchange="updateSetting('serverCacheNamingPattern', this.value); updateServerCacheConfig(null, this.value)"
-                                            class="w-full t-bg-main border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5">
+                                            class="lm-select !w-full !py-2.5">
                                             <option value="standard">标准 (Name_-_Singer_-_Source_-_ID_-_Quality)
                                             </option>
                                             <option value="simple">简洁 (Name - Singer - Quality)</option>
@@ -2554,8 +2779,9 @@
                                                 浏览器存储占用
                                                 <span class="setting-tooltip-trigger ml-1">
                                                     <i class="fas fa-question-circle"></i>
-                                                    <span class="setting-tooltip-content">当前浏览器 localStorage
-                                                        已使用空间（主要包含搜索历史、设置项等）。</span>
+                                                    <span class="setting-tooltip-content">当前浏览器 localStorage 及 IndexedDB
+                                                        (歌单数据)
+                                                        已使用空间。</span>
                                                 </span>
                                             </span>
                                         </div>
@@ -2813,7 +3039,7 @@
                                             <div class="flex items-center gap-3 w-full md:w-64">
                                                 <div class="relative flex-1">
                                                     <select id="lyric-font-family-select"
-                                                        class="w-full px-3 py-1.5 border t-border-main rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 transition-all appearance-none t-bg-panel pr-8"
+                                                        class="lm-select !w-full !py-1.5"
                                                         onchange="changeLyricFontFamily(this.value)">
                                                         <option value="">默认字体</option>
                                                         <optgroup label="常用中文字体">
@@ -3077,7 +3303,7 @@
                                                 (Style)</label>
                                             <select id="setting-footer-visualizer-style"
                                                 onchange="updateSetting('footerVisualizerStyle', this.value)"
-                                                class="w-full p-2 t-bg-main border t-border-main rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                                class="lm-select !w-full !py-2">
                                                 <option value="bars">条形阵列 (Bars)</option>
                                                 <option value="wave">平滑波浪 (Wave)</option>
                                             </select>
@@ -3113,7 +3339,7 @@
                                                 (Style)</label>
                                             <select id="setting-detail-visualizer-style"
                                                 onchange="updateSetting('detailVisualizerStyle', this.value)"
-                                                class="w-full p-2 t-bg-main border t-border-main rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                                class="lm-select !w-full !py-2">
                                                 <option value="pulse">频率脉冲 (Pulse)</option>
                                                 <option value="dots">点阵频谱 (Dots)</option>
                                                 <option value="flower">灵动莲花 (Flower)</option>
@@ -3157,7 +3383,7 @@
                                         </label>
                                         <select id="setting-visualizer-global-style"
                                             onchange="updateSetting('visualizerGlobalStyle', this.value)"
-                                            class="w-full p-2 t-bg-main border t-border-main rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                            class="lm-select !w-full !py-2">
                                             <option value="blocks">方块样式 (Blocks)</option>
                                             <option value="connected">连体样式 (Connected)</option>
                                         </select>
@@ -3954,7 +4180,7 @@
 
                 <div class="flex gap-4">
                     <select id="external-list-source" onchange="window.SongListManager.onExternalSourceChange()"
-                        class="p-3 border t-border-main rounded-xl t-bg-main text-sm focus:ring-2 focus:ring-emerald-400 focus:outline-none min-w-[120px]">
+                        class="lm-select !w-32 !py-2">
                         <option value="wy">网易音乐</option>
                         <option value="tx">腾讯音乐</option>
                         <option value="kg">酷狗音乐</option>
@@ -4479,7 +4705,7 @@
                         <p class="text-[10px] font-black t-text-muted uppercase tracking-widest mb-2">卡片字体</p>
                         <div class="flex gap-2">
                             <select id="lc-font-select"
-                                class="flex-1 min-w-0 text-xs border t-border-main rounded-xl px-2 py-1.5 t-bg-panel t-text-main focus:outline-none"
+                                class="lm-select !w-32 !py-1"
                                 style="--focus-border: var(--c-400)"
                                 onchange="window.lyricCard && window.lyricCard.setFontFamily(this.value)">
                                 <option value="">跟随设置</option>
@@ -5180,7 +5406,7 @@
                             onkeyup="if(event.key==='Enter') LocalMusicManager.doManualSearch()">
                     </div>
                     <select id="manual-index-source-select"
-                        class="px-4 py-3.5 t-bg-track border t-border-main rounded-2xl text-sm t-text-main focus:outline-none t-bg-main">
+                        class="lm-select !w-32 !py-2">
                         <option value="tx" selected>腾讯音乐</option>
                         <option value="wy">网易音乐</option>
                         <option value="kg">酷狗音乐</option>
@@ -5265,6 +5491,7 @@
     <script src="js/lyric-utils.js"></script>
     <script src="js/lyric-parser.js"></script>
     <script src="js/quality.js"></script>
+    <script src="js/idb_store.js"></script>
     <script src="js/user_sync.js"></script>
     <script src="js/batch_pagination.js"></script>
     <script src="js/single_song_ops.js"></script>

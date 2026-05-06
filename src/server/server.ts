@@ -13,7 +13,7 @@ import {
   SYNC_CLOSE_CODE,
 } from '@/constants'
 import { getUserSpace, releaseUserSpace, getUserName, getServerId, getUserDirname, migrateUserData, renameUserSpace, finishRenameUserSpace } from '@/user'
-import { createMsg2call } from 'message2call'
+import { createMessage2Call as createMsg2call } from 'message2call'
 import { ElFinderConnector, getSystemRoot } from './elfinderConnector'
 import formidable from 'formidable'
 // @ts-ignore
@@ -653,7 +653,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
     const adminPath = global.lx.config['admin.path'] ?? ''
 
     // 映射播放器逻辑 (无论是自定义路径还是前端硬编码的 /music/)
-    const isPlayerRequest = playerPath === '/'
+    const isPlayerRequest = (playerPath === '/' || playerPath === '')
       ? (pathname === '/' || (!pathname.startsWith('/api/') && !pathname.startsWith('/rest/') && (adminPath === '' || (pathname !== adminPath && !pathname.startsWith(adminPath + '/')))))
       : (pathname.startsWith(playerPath + '/') || pathname === playerPath)
 
@@ -728,7 +728,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         targetPath = 'music/login.html'
       } else {
         // [优化] 如果根路径是播放器，且请求已经包含 /music/ 前缀，则不再重复叠加
-        if (activePrefix === '/' && subPath.startsWith('/music/')) {
+        if ((activePrefix === '/' || activePrefix === '') && subPath.startsWith('/music/')) {
           targetPath = subPath.slice(1)
         } else {
           targetPath = path.posix.join('music', subPath.startsWith('/') ? subPath.slice(1) : subPath)
@@ -2329,7 +2329,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       if (pathname === '/api/music/cache/download' && req.method === 'POST') {
         void readBody(req).then(body => {
           try {
-            const { songInfo, url, quality, enableOnlyDownloadMode } = JSON.parse(body)
+            const { songInfo, url, quality, enableOnlyDownloadMode, embedLyric } = JSON.parse(body)
             if (!songInfo || !url) {
               res.writeHead(400)
               res.end('Missing params')
@@ -2362,7 +2362,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             }
             userTasks.push({ songKey, controller })
 
-            void fileCache.downloadAndCache(songInfo, url, quality, username, controller.signal, !!enableOnlyDownloadMode)
+            void fileCache.downloadAndCache(songInfo, url, quality, username, controller.signal, !!enableOnlyDownloadMode, embedLyric !== false)
               .then(() => console.log(`[Cache] Downloaded ${songInfo.name} for ${username || '_open'}`))
               .catch((err: any) => {
                 if (err.message === 'Aborted') {
@@ -2754,6 +2754,129 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         return
       }
 
+      // [新增] Embed Lyric into Audio File Tags (USLT)
+      if (pathname === '/api/music/cache/embedLyric' && req.method === 'POST') {
+        const reqUsername = (req.headers['x-user-name'] as string) || ''
+        const isPublic = !reqUsername || reqUsername === 'default'
+        let username = '_open'
+
+        if (!isPublic) {
+          const verified = verifyUserAuth(req)
+          if (!verified) {
+            res.writeHead(401, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, message: 'Unauthorized' }))
+            return
+          }
+          username = verified
+        }
+
+        void readBody(req).then(async body => {
+          try {
+            const { filenames } = JSON.parse(body)
+            if (!filenames || !Array.isArray(filenames)) throw new Error('Missing filenames')
+
+            let successCount = 0
+            let skippedCount = 0
+            let failCount = 0
+            const details: any[] = []
+
+            for (const filename of filenames) {
+              let filePath = ''
+              let folder: 'cache' | 'music' = 'cache'
+
+              // 在 cache 和 music 两个目录中查找文件
+              for (const f of ['cache', 'music'] as const) {
+                const dir = fileCache.getCacheDir(username, f === 'music')
+                const candidate = path.join(dir, filename)
+                if (fs.existsSync(candidate)) {
+                  filePath = candidate
+                  folder = f
+                  break
+                }
+              }
+
+              if (!filePath) {
+                details.push({ filename, status: 'fail', reason: '文件不存在' })
+                failCount++
+                continue
+              }
+
+              try {
+                // 检查是否已有 USLT 歌词（已有则跳过）
+                const { MusicTagger: MT } = require('music-tag-native')
+                const checkTagger = new MT()
+                checkTagger.loadPath(filePath)
+                const existingLyrics = checkTagger.lyrics
+                checkTagger.dispose()
+
+                if (existingLyrics && existingLyrics.trim().length > 10) {
+                  details.push({ filename, status: 'skipped', reason: '已有歌词标签' })
+                  skippedCount++
+                  continue
+                }
+
+                // 从索引中获取 songInfo（索引条目本身就包含 source/songmid 等字段）
+                const indexItem = fileCache.getIndexItemByFilename(filename, username) as any
+                const songInfo = indexItem
+
+                // 优先读同名 .lrc 文件
+                const ext = path.extname(filename)
+                const baseName = filename.slice(0, filename.length - ext.length)
+                const lrcFilename = baseName + '.lrc'
+                const dir = fileCache.getCacheDir(username, folder === 'music')
+                const lrcPath = path.join(dir, lrcFilename)
+
+                let lyricText: string | null = null
+
+                if (fs.existsSync(lrcPath)) {
+                  lyricText = fs.readFileSync(lrcPath, 'utf8')
+                  console.log(`[EmbedLyric] Using local .lrc for: ${filename}`)
+                } else if (songInfo && songInfo.source && songInfo.source !== 'unknown') {
+                  // 没有 .lrc 文件，尝试通过 SDK 获取
+                  const lyricFetcherFn = fileCache.getLyricFetcher()
+                  if (lyricFetcherFn) {
+                    lyricText = await lyricFetcherFn(songInfo)
+                  }
+                  if (lyricText) {
+                    console.log(`[EmbedLyric] Fetched lyric from SDK for: ${filename}`)
+                  }
+                }
+
+                if (!lyricText) {
+                  details.push({ filename, status: 'fail', reason: '无法获取歌词' })
+                  failCount++
+                  continue
+                }
+
+                // 写入 USLT 标签
+                const tagger = new MT()
+                tagger.loadPath(filePath)
+                tagger.lyrics = lyricText
+                tagger.save()
+                tagger.dispose()
+
+                // [新增] 更新索引 hasEmbedLyric 状态
+                fileCache.setIndexEmbedLyric(filename, username, true)
+
+                details.push({ filename, status: 'success' })
+                successCount++
+                console.log(`[EmbedLyric] Embedded lyric for: ${filename}`)
+              } catch (itemErr: any) {
+                details.push({ filename, status: 'fail', reason: itemErr.message || '未知错误' })
+                failCount++
+              }
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: true, successCount, skippedCount, failCount, details }))
+          } catch (e: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, message: e.message }))
+          }
+        })
+        return
+      }
+
       // 11. Link Unindexed Local File
       if (pathname === '/api/music/cache/link' && req.method === 'POST') {
         const verified = verifyUserAuth(req)
@@ -3081,11 +3204,17 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
                 const rangeHeader = req.headers['range']
                 const isFullRange = rangeHeader === 'bytes=0-'
 
-                if (isTaggingMode && (!rangeHeader || isFullRange)) {
+                  if (isTaggingMode && (!rangeHeader || isFullRange)) {
                   const songName = urlObj.searchParams.get('name') || ''
                   const artist = urlObj.searchParams.get('singer') || ''
                   const album = urlObj.searchParams.get('album') || ''
                   const imageUrl = urlObj.searchParams.get('pic') || ''
+                  // [新增] 浏览器下载歌词嵌入参数
+                  const embedLyric = urlObj.searchParams.get('lyric') === '1'
+                  const lyricSource = urlObj.searchParams.get('source') || ''
+                  const lyricSongmid = urlObj.searchParams.get('songmid') || ''
+                  const lyricHash = urlObj.searchParams.get('hash') || ''
+                  const lyricInterval = urlObj.searchParams.get('interval') || ''
 
                   const chunks: any[] = []
                   let received = 0
@@ -3147,6 +3276,21 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
                         } catch (e: any) {
                           console.warn('[DownloadProxy] Picture fetch/embed failed:', imageUrl, e.message)
                         }
+                      }
+                      // [新增] 嵌入歌词 USLT 标签：SDK 返回 { promise, cancel }，必须 await .promise
+                      if (embedLyric && lyricSource && lyricSongmid && musicSdk[lyricSource]?.getLyric) {
+                        try {
+                          const lyricReqObj = musicSdk[lyricSource].getLyric({
+                            songmid: lyricSongmid,
+                            name: songName,
+                            singer: artist,
+                            hash: lyricHash,
+                            interval: lyricInterval,
+                          })
+                          const lyricResult = await lyricReqObj.promise
+                          const lyricText = lyricResult?.lyric || lyricResult?.lrc || ''
+                          if (lyricText) tagger.lyrics = lyricText
+                        } catch (e) { /* 歌词获取失败不影响下载 */ }
                       }
                       tagger.save()
                       console.log('[DownloadProxy] Metadata saved successfully for:', songName)
@@ -5214,9 +5358,9 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
     const msg2call = createMsg2call<LX.Sync.ClientSyncActions>({
       funcsObj: callObj,
       timeout: 120 * 1000,
-      sendMessage(data) {
+      sendMessage(data: any) {
         if (disconnected) throw new Error('disconnected')
-        void encryptMsg(socket.keyInfo, JSON.stringify(data)).then((data) => {
+        void encryptMsg(socket.keyInfo, JSON.stringify(data)).then((data: string) => {
           // console.log('sendData', eventName)
           socket.send(data)
         }).catch(err => {
@@ -5225,10 +5369,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
           socket.close(SYNC_CLOSE_CODE.failed)
         })
       },
-      onCallBeforeParams(rawArgs) {
+      onCallBeforeParams(rawArgs: any[]) {
         return [socket, ...rawArgs]
       },
-      onError(error, path, groupName) {
+      onError(error: Error, path: string[], groupName?: string) {
         const name = groupName ?? ''
         const userName = socket.userInfo?.name ?? ''
         const deviceName = socket.keyInfo?.deviceName ?? ''
@@ -5407,6 +5551,41 @@ export const startServer = async (port: number, ip: string) => {
       }
     }
   }
+
+  // [新增] 注入歌词获取钩子：用于服务器缓存时自动嵌入 USLT 标签
+  // SDK 的 getLyric() 返回 { promise, cancel }，必须 await .promise
+  fileCache.setLyricFetcher(async (songInfo: any) => {
+    try {
+      const source = songInfo.source
+      if (!source || !musicSdk[source] || !musicSdk[source].getLyric) {
+        console.log(`[LyricFetcher] Skip: source="${source}" not supported`)
+        return null
+      }
+      // [Fix] Strip source prefix from songmid (e.g. "tx_004bd0..." -> "004bd0...")
+      let songmid: string = songInfo.songmid || songInfo.id || ''
+      const sourcePrefix = `${source}_`
+      if (songmid.startsWith(sourcePrefix)) songmid = songmid.slice(sourcePrefix.length)
+      if (!songmid) {
+        console.log(`[LyricFetcher] Skip: empty songmid`)
+        return null
+      }
+      console.log(`[LyricFetcher] Fetching lyric: ${source}_${songmid} (${songInfo.name})`)
+      const requestObj = musicSdk[source].getLyric({
+        songmid,
+        name: songInfo.name || '',
+        singer: songInfo.singer || '',
+        hash: songInfo.hash || '',
+        interval: songInfo.interval || '',
+      })
+      const result = await requestObj.promise
+      const lyricText = result?.lyric || result?.lrc || null
+      console.log(`[LyricFetcher] Result: ${lyricText ? lyricText.length + ' chars' : 'null'}`)
+      return lyricText
+    } catch (e: any) {
+      console.warn(`[LyricFetcher] Failed for "${songInfo.name}":`, e.message || e)
+      return null
+    }
+  })
 
   // if (status.status) await handleStopServer()
 

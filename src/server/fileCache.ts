@@ -40,6 +40,12 @@ export const cacheProgress: Map<string, { progress: number; status: string; tota
 // [New] Active Cache Tasks Tracker: username -> [ { songKey, controller } ]
 export const activeTasks: Map<string, Array<{ songKey: string, controller: AbortController }>> = new Map()
 
+// [新增] 歌词获取钩子：由 server.ts 在启动时注入，避免 fileCache 直接依赖 musicSdk
+// 调用时会通过 /api/music/lyric 接口逻辑（先查本地 .lrc 缓存，再去源站）获取歌词文本
+type LyricFetcher = (songInfo: any) => Promise<string | null>
+let _lyricFetcher: LyricFetcher | null = null
+export const setLyricFetcher = (fn: LyricFetcher) => { _lyricFetcher = fn }
+
 export const getCacheDir = (username?: string, isOnlyDownload?: boolean) => {
     const folderName = isOnlyDownload ? 'music' : 'cache'
     let baseDir = ''
@@ -80,6 +86,7 @@ interface CacheItem {
     ext: string
     hasCover?: boolean
     hasLyric?: boolean
+    hasEmbedLyric?: boolean
     bitrate?: number
     sampleRate?: number
     bitDepth?: number
@@ -435,8 +442,8 @@ export const syncCacheIndex = async (username?: string) => {
                         updated = true
                     }
 
-                    // If interval or quality/bitrate is missing/unknown, try to extract it
-                    if (!existing.interval || existing.quality === 'unknown' || !existing.bitrate) {
+                    // If interval or quality/bitrate is missing/unknown, or hasEmbedLyric not yet detected, try to extract it
+                    if (!existing.interval || existing.quality === 'unknown' || !existing.bitrate || existing.hasEmbedLyric === undefined) {
                         try {
                             const tagger = new MusicTagger()
                             tagger.loadPath(filePath)
@@ -447,6 +454,11 @@ export const syncCacheIndex = async (username?: string) => {
                             existing.bitDepth = tagger.bitDepth
                             if (!existing.quality || existing.quality === 'unknown') {
                                 existing.quality = detectQualityFromBitrate(tagger.bitRate, ext, tagger)
+                            }
+                            // [新增] 检测是否已嵌入歌词 USLT 标签
+                            if (existing.hasEmbedLyric === undefined) {
+                                const lyricsInTag = tagger.lyrics
+                                existing.hasEmbedLyric = !!(lyricsInTag && lyricsInTag.trim().length > 10)
                             }
                             tagger.dispose()
                         } catch (e) { }
@@ -469,6 +481,9 @@ export const syncCacheIndex = async (username?: string) => {
                         const sampleRate = tagger.sampleRate
                         const bitDepth = tagger.bitDepth
                         const detectedQuality = detectQualityFromBitrate(tagger.bitRate, ext, tagger)
+                        // [新增] 检测是否已嵌入歌词 USLT 标签
+                        const lyricsInTag = tagger.lyrics
+                        const hasEmbedLyric = !!(lyricsInTag && lyricsInTag.trim().length > 10)
 
                         tagger.dispose()
 
@@ -492,6 +507,7 @@ export const syncCacheIndex = async (username?: string) => {
                             ext: ext.replace('.', ''),
                             hasCover: hasCover,
                             hasLyric: hasLyricOnDisk,
+                            hasEmbedLyric,
                             bitrate: bitrate,
                             sampleRate: sampleRate,
                             bitDepth: bitDepth
@@ -1129,7 +1145,7 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
     }
 }
 
-export const downloadAndCache = async (songInfo: any, url: string, quality?: string, username?: string, signal?: AbortSignal, isOnlyDownload?: boolean) => {
+export const downloadAndCache = async (songInfo: any, url: string, quality?: string, username?: string, signal?: AbortSignal, isOnlyDownload?: boolean, shouldEmbedLyric: boolean = true) => {
     const dir = ensureDir(username, isOnlyDownload)
     const baseName = getFileName(songInfo, quality, isOnlyDownload, username)
     const tempPath = path.join(dir, baseName + '.tmp')
@@ -1258,6 +1274,24 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                         tagger.dispose()
                     } catch (e) { }
 
+                    // [新增] 嵌入歌词 USLT 标签（根据 shouldEmbedLyric 判断）
+                    if (shouldEmbedLyric && _lyricFetcher) {
+                        try {
+                            const lyricText = await _lyricFetcher({ ...songInfo, quality })
+                            if (lyricText) {
+                                const tagger2 = new MusicTagger()
+                                tagger2.loadPath(finalPath)
+                                tagger2.lyrics = lyricText
+                                tagger2.save()
+                                tagger2.dispose()
+                                console.log(`[FileCache] USLT lyric embedded for: ${metadata.name}`)
+                                // [新增] 同步更新索引中的 hasEmbedLyric 状态
+                                const finalItem = indexManager.get(normalizedUsername, id, folderType, quality || 'unknown')
+                                if (finalItem) { (finalItem as any).hasEmbedLyric = true }
+                            }
+                        } catch (e) { /* 歌词写入失败不影响缓存结果 */ }
+                    }
+
                     cacheProgress.set(songKey, { progress: 100, status: 'finished' })
                     setTimeout(() => cacheProgress.delete(songKey), 30000)
                     settle(() => { resolve(); void checkAndCleanupCache(username) })
@@ -1279,6 +1313,35 @@ export const stopUserTasks = (username: string, songKey?: string) => {
         tasks.forEach(t => t.controller.abort())
         activeTasks.delete(username)
     }
+}
+
+// [新增] 根据文件名从索引中查找对应条目（跨 cache/music 两个目录）
+export const getIndexItemByFilename = (filename: string, username: string) => {
+    const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+    for (const folder of ['cache', 'music'] as const) {
+        const items = indexManager.getAll(normalizedUsername, folder)
+        const found = items.find((i: any) => i.filename === filename)
+        if (found) return { ...found, folder }
+    }
+    return null
+}
+
+// [新增] 暴露 lyricFetcher 引用，供外部接口（如 embedLyric）使用
+export const getLyricFetcher = () => _lyricFetcher
+
+// [新增] 更新索引中指定文件的 hasEmbedLyric 状态（由 embedLyric 接口成功写入后调用）
+export const setIndexEmbedLyric = (filename: string, username: string, value: boolean) => {
+    const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+    for (const folder of ['cache', 'music'] as const) {
+        const items = indexManager.getAll(normalizedUsername, folder)
+        const found = items.find((i: any) => i.filename === filename)
+        if (found) {
+            (found as any).hasEmbedLyric = value
+            indexManager.save(normalizedUsername, folder)
+            return true
+        }
+    }
+    return false
 }
 
 export const serveCacheFile = (req: http.IncomingMessage, res: http.ServerResponse, filename: string, username?: string) => {
