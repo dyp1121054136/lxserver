@@ -14,10 +14,7 @@ sources=("长青音源.js" "念心音源.js" "全豆要-聚合音源.js" "洛雪
 for source in "${sources[@]}"; do  
   echo "正在导入: $source"  
     
-  response=$(curl -s -w "%{http_code}" -X POST http://localhost:9527/api/custom-source/import \  
-    -H "Content-Type: application/json" \  
-    -H "x-frontend-auth: $FRONTEND_PASSWORD" \  
-    -d "{\"url\":\"https://raw.githubusercontent.com/dyp1121054136/lxserver/master/$source\",\"filename\":\"$source\",\"username\":\"default\"}")  
+  response=$(curl -s -w "%{http_code}" -X POST http://localhost:10000/api/custom-source/import -H "Content-Type: application/json" -H "x-frontend-auth: $FRONTEND_PASSWORD" -d "{\"url\":\"https://raw.githubusercontent.com/dyp1121054136/lxserver/master/$source\",\"filename\":\"$source\",\"username\":\"default\"}")  
     
   # 提取状态码（最后3位）  
   http_code="${response: -3}"  
