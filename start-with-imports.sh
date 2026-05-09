@@ -14,11 +14,8 @@ sources=("长青音源.js" "念心音源.js" "全豆要-聚合音源.js" "洛雪
 for source in "${sources[@]}"; do  
   echo "正在导入: $source"  
     
-  # 使用jsdelivr CDN链接  
-  import_response=$(curl -s -w "%{http_code}" -X POST http://localhost:10000/api/custom-source/import \  
-    -H "Content-Type: application/json" \  
-    -H "x-frontend-auth: $FRONTEND_PASSWORD" \  
-    -d "{\"url\":\"https://cdn.jsdelivr.net/gh/dyp1121054136/lxserver@master/$source\",\"filename\":\"$source\",\"username\":\"default\"}")  
+  # 使用jsdelivr CDN链接 - 整个curl命令必须在同一行  
+  import_response=$(curl -s -w "%{http_code}" -X POST http://localhost:10000/api/custom-source/import -H "Content-Type: application/json" -H "x-frontend-auth: $FRONTEND_PASSWORD" -d "{\"url\":\"https://cdn.jsdelivr.net/gh/dyp1121054136/lxserver@master/$source\",\"filename\":\"$source\",\"username\":\"default\"}")  
     
   # 提取状态码  
   http_code="${import_response: -3}"  
@@ -33,11 +30,8 @@ for source in "${sources[@]}"; do
     if [ ! -z "$source_id" ]; then  
       echo "正在启用: $source (ID: $source_id)"  
         
-      # 启用音源  
-      toggle_response=$(curl -s -w "%{http_code}" -X POST http://localhost:10000/api/custom-source/toggle \  
-        -H "Content-Type: application/json" \  
-        -H "x-frontend-auth: $FRONTEND_PASSWORD" \  
-        -d "{\"username\":\"default\",\"sourceId\":\"$source_id\",\"enabled\":true}")  
+      # 启用音源 - 同样必须在同一行  
+      toggle_response=$(curl -s -w "%{http_code}" -X POST http://localhost:10000/api/custom-source/toggle -H "Content-Type: application/json" -H "x-frontend-auth: $FRONTEND_PASSWORD" -d "{\"username\":\"default\",\"sourceId\":\"$source_id\",\"enabled\":true}")  
         
       toggle_code="${toggle_response: -3}"  
         
