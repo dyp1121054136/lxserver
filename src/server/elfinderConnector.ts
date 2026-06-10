@@ -24,13 +24,23 @@ export class ElFinderConnector {
     // 解码hash为路径
     private decode(hash: string): string {
         if (hash.startsWith('TMP_')) {
-            return Buffer.from(hash.substring(4), 'base64').toString('utf-8')
+            const tmpPath = Buffer.from(hash.substring(4), 'base64').toString('utf-8')
+            const resolved = path.resolve(tmpPath)
+            const tmpDir = require('os').tmpdir()
+            if (!resolved.startsWith(tmpDir + path.sep) && resolved !== tmpDir) {
+                throw new Error('Invalid temporary path')
+            }
+            return resolved
         }
         try {
             const rawHash = hash.startsWith('l1_') ? hash.substring(3) : hash
             const base64 = rawHash.replace(/-/g, '+').replace(/_/g, '/')
             const relative = Buffer.from(base64, 'base64').toString('utf-8')
-            return path.join(this.root, relative)
+            const resolved = path.resolve(this.root, relative)
+            if (!resolved.startsWith(this.root + path.sep) && resolved !== this.root) {
+                throw new Error('Path traversal detected')
+            }
+            return resolved
         } catch {
             return this.root
         }
