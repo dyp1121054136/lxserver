@@ -13,7 +13,7 @@ import {
   SYNC_CLOSE_CODE,
 } from '@/constants'
 import { getUserSpace, releaseUserSpace, getUserName, getServerId, getUserDirname, migrateUserData, renameUserSpace, finishRenameUserSpace } from '@/user'
-import { createMessage2Call as createMsg2call } from 'message2call'
+import { createMsg2call } from 'message2call'
 import { ElFinderConnector, getSystemRoot } from './elfinderConnector'
 import formidable from 'formidable'
 // @ts-ignore
@@ -3862,7 +3862,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
           }
 
           try {
-            let { songInfo, quality } = JSON.parse(body)
+            let { songInfo, quality, enableAutoSwitchApiSource } = JSON.parse(body)
             songInfo = normalizeSongInfo(songInfo)
             // console.log('[MusicUrl] Song Info:', JSON.stringify(songInfo, null, 2))
             if (!songInfo || !songInfo.source) {
@@ -3879,7 +3879,8 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
                 const userApiResult = await callUserApiGetMusicUrl(
                   source, songInfo, quality || '128k', verifiedUsername,
-                  (attempt) => { void pushProgress(attempt) }
+                  (attempt) => { void pushProgress(attempt) },
+                  enableAutoSwitchApiSource !== false
                 )
                 result = userApiResult
                 attempts = userApiResult.attempts || []
@@ -4496,6 +4497,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             'subsonic.enable': global.lx.config['subsonic.enable'] ?? true,
             'subsonic.path': global.lx.config['subsonic.path'] ?? '/rest',
             'singer.sourcePriority': (global.lx.config['singer.sourcePriority'] || ['tx', 'wy']).join(','),
+            'system.allowUnsafeVM': global.lx.config['system.allowUnsafeVM'] || false,
           }
           res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -4521,6 +4523,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
               if (newConfig['user.enableLoginCacheRestriction'] !== undefined) global.lx.config['user.enableLoginCacheRestriction'] = newConfig['user.enableLoginCacheRestriction']
               if (newConfig['user.enableCacheSizeLimit'] !== undefined) global.lx.config['user.enableCacheSizeLimit'] = newConfig['user.enableCacheSizeLimit']
               if (newConfig['user.cacheSizeLimit'] !== undefined) global.lx.config['user.cacheSizeLimit'] = parseInt(newConfig['user.cacheSizeLimit']) || 2000
+              if (newConfig['system.allowUnsafeVM'] !== undefined) global.lx.config['system.allowUnsafeVM'] = newConfig['system.allowUnsafeVM']
 
               let warning = ''
 
@@ -4626,6 +4629,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
                 'player.path': global.lx.config['player.path'] ?? '/music',
                 'subsonic.enable': global.lx.config['subsonic.enable'],
                 'subsonic.path': global.lx.config['subsonic.path'],
+                'system.allowUnsafeVM': global.lx.config['system.allowUnsafeVM'],
                 users: global.lx.config.users.map(u => ({
                   name: u.name,
                   password: u.password,
@@ -5312,6 +5316,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
   wss = new WebSocketServer({
     noServer: true,
+    perMessageDeflate: false,
   })
 
   // WebDAV Sync Progress Broadcast
@@ -5372,7 +5377,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       onCallBeforeParams(rawArgs: any[]) {
         return [socket, ...rawArgs]
       },
-      onError(error: Error, path: string[], groupName?: string) {
+      onError(error: Error, path: string[], groupName: string | null) {
         const name = groupName ?? ''
         const userName = socket.userInfo?.name ?? ''
         const deviceName = socket.keyInfo?.deviceName ?? ''
@@ -5452,6 +5457,8 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       socket.removeListener('error', onSocketError)
 
       // 鉴权通过，升级协议
+      // 强制删除压缩扩展头，防止 permessage-deflate 协商导致 "RSV1 must be clear" 错误
+      delete request.headers['sec-websocket-extensions']
       wss?.handleUpgrade(request, socket, head, function done(ws) {
         wss?.emit('connection', ws, request)
       })

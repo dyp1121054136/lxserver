@@ -143,7 +143,7 @@ export const authConnect = async (req: http.IncomingMessage) => {
 
         // console.log('Auth check path:', urlUserName, clientUserName)
 
-        if (urlUserName && clientUserName && urlUserName !== clientUserName) {
+        if (urlUserName && urlUserName !== 'socket' && clientUserName && urlUserName !== clientUserName) {
           // 如果路径中有用户名，且与客户端所属用户不一致，则拒绝连接
           throw new Error('User mismatch')
         }

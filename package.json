@@ -1,6 +1,6 @@
 {
   "name": "lx-music-sync-server",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/download-binary.js && node scripts/update-build-hash.js",
@@ -39,24 +39,24 @@
     "@foobar404/wave": "^2.0.5",
     "@types/formidable": "^3.5.1",
     "archiver": "^7.0.1",
-    "brace-expansion": "^5.0.5",
+    "brace-expansion": "^5.0.6",
     "bufferutil": "^4.0.8",
     "crypto-js": "^4.2.0",
     "file-type": "^22.0.1",
     "formidable": "^3.5.4",
     "log4js": "^6.9.1",
     "lru-cache": "^10.0.1",
-    "message2call": "^2.0.3",
+    "message2call": "0.1.3",
     "module-alias": "^2.3.4",
     "music-tag-native": "^0.2.4",
     "needle": "^3.3.1",
     "socks-proxy-agent": "^10.0.0",
     "tunnel": "^0.0.6",
-    "unzipper": "^0.11.6",
+    "unzipper": "^0.12.3",
     "utf-8-validate": "^6.0.6",
-    "vm2": "^3.10.5",
+    "vm2": "^3.11.4",
     "webdav": "^5.9.0",
-    "ws": "^8.14.2"
+    "ws": "8.20.1"
   },
   "devDependencies": {
     "@tsconfig/node16": "^16.1.1",

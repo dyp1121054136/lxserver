@@ -20,7 +20,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
 export async function handleValidate(req: IncomingMessage, res: ServerResponse) {
     try {
         const body = await readBody(req)
-        const { script, username } = JSON.parse(body)
+        const { script, username, allowUnsafeVM } = JSON.parse(body)
 
         // 鉴权逻辑：只有已登录用户（非 default）可以免密码验证
         const targetOwner = (username && username !== 'default') ? username : 'open'
@@ -44,6 +44,7 @@ export async function handleValidate(req: IncomingMessage, res: ServerResponse) 
             id: 'temp_validation',
             script,
             enabled: false,
+            allowUnsafeVM: !!allowUnsafeVM,
             ...metadata,
             owner: 'temp' // 临时验证 owner
         } as any)
@@ -71,6 +72,7 @@ export async function handleValidate(req: IncomingMessage, res: ServerResponse) 
                 valid: false,
                 error: result.error,
                 requireUnsafe: result.requireUnsafe,
+                disabledVM: result.requireUnsafe && !global.lx.config['system.allowUnsafeVM'],
                 metadata // 即使验证失败也返回元数据，方便前端展示
             }))
         }
@@ -173,11 +175,31 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
         // 获取脚本信息
         const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, allowUnsafeVM)
 
-        // 如果检测到需要不安全模式但未提供标志，则要求确认
-        if (requireUnsafe && !allowUnsafeVM) {
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
-            return
+        // 核心安全校验：若脚本需要或者指定了 unsafe VM 模式，则必须验证管理员身份
+        if (requireUnsafe || allowUnsafeVM) {
+            const auth = req.headers['x-frontend-auth']
+            if (auth !== global.lx.config['frontend.password']) {
+                res.writeHead(403, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, error: '允许以 VM 模式运行脚本需要验证管理员身份。' }))
+                return
+            }
+        }
+
+        // 如果检测到需要不安全模式
+        if (requireUnsafe) {
+            // 如果系统已禁用 VM 模式
+            if (!global.lx.config['system.allowUnsafeVM']) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, disabledVM: true, error: 'VM_DISABLED', message: '已禁用VM。该脚本需要原生 VM 模式运行，但服务器后台已禁用 VM 模式。' }))
+                return
+            }
+
+            // 如果未提供标志，则要求确认
+            if (!allowUnsafeVM) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
+                return
+            }
         }
 
         // 生成唯一ID（可读的文件名）
@@ -278,11 +300,31 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
         // 获取脚本信息
         const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, allowUnsafeVM)
 
-        // 如果检测到需要不安全模式但未提供标志，则要求确认
-        if (requireUnsafe && !allowUnsafeVM) {
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
-            return
+        // 核心安全校验：若脚本需要或者指定了 unsafe VM 模式，则必须验证管理员身份
+        if (requireUnsafe || allowUnsafeVM) {
+            const auth = req.headers['x-frontend-auth']
+            if (auth !== global.lx.config['frontend.password']) {
+                res.writeHead(403, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, error: '允许以 VM 模式运行脚本需要验证管理员身份。' }))
+                return
+            }
+        }
+
+        // 如果检测到需要不安全模式
+        if (requireUnsafe) {
+            // 如果系统已禁用 VM 模式
+            if (!global.lx.config['system.allowUnsafeVM']) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, disabledVM: true, error: 'VM_DISABLED', message: '已禁用VM。该脚本需要原生 VM 模式运行，但服务器后台已禁用 VM 模式。' }))
+                return
+            }
+
+            // 如果未提供标志，则要求确认
+            if (!allowUnsafeVM) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
+                return
+            }
         }
 
         const targetOwner = (username && username !== 'default') ? username : 'open'
@@ -563,6 +605,16 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
         const oldEnabled = target.enabled
         const oldAllowUnsafeVM = !!target.allowUnsafeVM
 
+        // 核心安全校验：如果试图开启 VM 模式（或当前就是 VM 模式），必须要验证管理员密码
+        if (target.allowUnsafeVM || allowUnsafeVM) {
+            const auth = req.headers['x-frontend-auth']
+            if (auth !== global.lx.config['frontend.password']) {
+                res.writeHead(403, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, error: '开启/运行 VM 模式脚本需要验证管理员身份。' }))
+                return
+            }
+        }
+
         // 修改逻辑：只有当参数明确为 true 时才更新为 true，防止被默认值 false 覆盖
         if (allowUnsafeVM === true) target.allowUnsafeVM = true
         target.enabled = enabled !== undefined ? enabled : !target.enabled
@@ -576,13 +628,25 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
             // 如果是尝试启用，检查启用后的实时状态
             if (target.enabled) {
                 const status = getApiStatus(targetOwner, targetId)
-                if (status && status.status === 'failed' && status.error === 'REQUIRE_UNSAFE_VM') {
-                    console.warn(`[CustomSource] Detect REQUIRE_UNSAFE_VM during toggle for ${targetId}, rolling back...`)
+                const isRequireUnsafe = !allowUnsafeVM && !oldAllowUnsafeVM && !!(status && status.status === 'failed' && status.error && (
+                    status.error === 'REQUIRE_UNSAFE_VM' ||
+                    status.error.includes('初始化超时') ||
+                    status.error.includes('timeout')
+                ))
+                if (isRequireUnsafe) {
+                    console.warn(`[CustomSource] Detect REQUIRE_UNSAFE_VM or Timeout during toggle for ${targetId}, rolling back...`)
                     // 回滚状态
                     target.enabled = oldEnabled
                     target.allowUnsafeVM = oldAllowUnsafeVM
                     fs.writeFileSync(metaPath, JSON.stringify(sources, null, 2))
                     await initUserApis(targetOwner)
+
+                    // 如果系统已禁用 VM 模式，直接提示已禁用
+                    if (!global.lx.config['system.allowUnsafeVM']) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' })
+                        res.end(JSON.stringify({ success: false, disabledVM: true, error: 'VM_DISABLED', message: '已禁用VM。该脚本需要原生 VM 模式运行，但服务器后台已禁用 VM 模式。' }))
+                        return
+                    }
 
                     res.writeHead(200, { 'Content-Type': 'application/json' })
                     res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
@@ -594,7 +658,12 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
             res.end(JSON.stringify({ success: true, enabled: target.enabled }))
         } catch (e: any) {
             // initUserApis 本身不应抛出这个错误（内部已捕获并记录 status），但为了健壮性保留此判断
-            if (e.message === 'REQUIRE_UNSAFE_VM') {
+            const isRequireUnsafe = !allowUnsafeVM && !oldAllowUnsafeVM && !!(e && e.message && (
+                e.message === 'REQUIRE_UNSAFE_VM' ||
+                e.message.includes('初始化超时') ||
+                e.message.includes('timeout')
+            ))
+            if (isRequireUnsafe) {
                 res.writeHead(200, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, requireUnsafe: true, message: '该脚本需要原生 VM 模式运行，可能存在安全风险，是否继续？' }))
                 return
@@ -638,10 +707,12 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
             fs.mkdirSync(sourcesDir, { recursive: true })
         }
 
-        // 保存混合列表的绝对顺序到 order.json
+        // 保存混合列表的绝对顺序到 order.json（用于 handleList 展示排序）
         fs.writeFileSync(orderPath, JSON.stringify(sourceIds, null, 2))
 
-        // 向下兼容：同时尝试重排各自存在的 sources.json
+        // 同时尝试重排各自存在的 sources.json，并记录是否修改了 open 的源
+        let openSourcesModified = false
+
         if (fs.existsSync(metaPath)) {
             const sources = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
             const currentSourcesMap = new Map(sources.map((s: any) => [s.id, s]))
@@ -658,9 +729,10 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
             }
             fs.writeFileSync(metaPath, JSON.stringify(newSources, null, 2))
         } else if (targetOwner !== 'open') {
-            // 如果用户自己的为空，也尝试重排一下 open 的 sources.json，以支持用户管理公共源的情况
+            // 用户没有私有源时，重排 open 的 sources.json
             const openSourcesDir = getSourceDir('open')
             const openMetaPath = path.join(openSourcesDir, 'sources.json')
+            const openOrderPath = path.join(openSourcesDir, 'order.json')
             if (fs.existsSync(openMetaPath)) {
                 const sources = JSON.parse(fs.readFileSync(openMetaPath, 'utf-8'))
                 const currentSourcesMap = new Map(sources.map((s: any) => [s.id, s]))
@@ -676,11 +748,18 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
                     newSources.push(source)
                 }
                 fs.writeFileSync(openMetaPath, JSON.stringify(newSources, null, 2))
+                // 同时把 order.json 写入 open 目录，供 loadSourcesFromDir 按序加载
+                fs.writeFileSync(openOrderPath, JSON.stringify(sourceIds, null, 2))
+                openSourcesModified = true
             }
         }
 
-        // Reload APIs to apply new priority ordering
+        // 重新加载 API，使新顺序立即生效于解析优先级
         await initUserApis(targetOwner)
+        // 若修改了 open 的源顺序，也必须重载 open，否则 loadedApis 里顺序不变
+        if (openSourcesModified) {
+            await initUserApis('open')
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ success: true }))

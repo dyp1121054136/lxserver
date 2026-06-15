@@ -49,6 +49,7 @@ const config: LX.Config = {
   'subsonic.path': '/rest', // Subsonic 访问路径
   'singer.sourcePriority': ['tx', 'wy'], // 歌手信息源优先级
   'cache.namingPattern': 'standard', // 缓存命名规则
+  'system.allowUnsafeVM': false, // 是否允许运行 VM 模式自定义源脚本
 }
 
 export default config

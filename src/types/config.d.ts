@@ -182,6 +182,10 @@ declare namespace LX {
      * 缓存存储位置
      */
     serverCacheLocation?: string
+    /**
+     * 是否允许运行 VM 模式自定义源脚本
+     */
+    'system.allowUnsafeVM'?: boolean
   }
 }
 

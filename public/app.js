@@ -1704,6 +1704,9 @@ class App {
             if (form.elements['user.cacheSizeLimit']) {
                 form.elements['user.cacheSizeLimit'].value = config['user.cacheSizeLimit'] || 2000;
             }
+            if (form.elements['system.allowUnsafeVM']) {
+                form.elements['system.allowUnsafeVM'].checked = config['system.allowUnsafeVM'] === true;
+            }
             if (form.elements['singer.sourcePriority']) {
                 form.elements['singer.sourcePriority'].value = config['singer.sourcePriority'] || 'tx,wy';
             }
@@ -1811,6 +1814,7 @@ class App {
             'subsonic.enable': formData.get('subsonic.enable') === 'on',
             'subsonic.path': (formData.get('subsonic.path') || '').trim() || '/rest',
             'singer.sourcePriority': formData.get('singer.sourcePriority'),
+            'system.allowUnsafeVM': formData.get('system.allowUnsafeVM') === 'on',
         };
 
         try {
